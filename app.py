@@ -13,7 +13,6 @@ st.set_page_config(
 )
 
 # --- 2. LOAD SECRETS & INITIALIZE CLIENTS ---
-# These must be in your Streamlit secrets (.streamlit/secrets.toml)
 try:
     N8N_ADD_ITEM_URL = st.secrets["n8n"]["add_item_webhook"]
     N8N_UPDATE_STATUS_URL = st.secrets["n8n"]["update_status_webhook"]
@@ -31,29 +30,33 @@ except KeyError:
 def upload_file_to_supabase(file: UploadedFile) -> str | None:
     """Uploads a Streamlit file object to Supabase Storage and returns the public URL."""
     try:
-        # Get the raw bytes from the file object
         file_bytes = file.getvalue()
-        
-        # Create a unique file path
         file_ext = file.name.split('.')[-1]
         file_path = f"public/{uuid.uuid4()}.{file_ext}"
 
-        # Upload the bytes
         supabase.storage.from_(SUPABASE_BUCKET).upload(
-            file=file_bytes, # <-- THE FIX: Pass the bytes, not the file object
+            file=file_bytes, 
             path=file_path,
             file_options={"content-type": file.type}
         )
-        
-        # Return the public URL
         return supabase.storage.from_(SUPABASE_BUCKET).get_public_url(file_path)
     
     except Exception as e:
         st.error(f"Storage Error: {str(e)}")
         return None
 
-def update_item_status(item_id: int, new_status: str):
-    """Callback function to trigger the n8n webhook for status update."""
+# --- FIX 1: Corrected update_item_status function ---
+def update_item_status(item_id: int):
+    """
+    Callback function to trigger the n8n webhook.
+    It reads the new value from st.session_state using the item_id.
+    """
+    # Build the key inside the callback
+    key = f"status_{item_id}"
+    
+    # Read the new value from session_state
+    new_status = st.session_state[key]
+    
     try:
         payload = {"item_id": item_id, "active": (new_status == "Active")}
         response = requests.post(N8N_UPDATE_STATUS_URL, json=payload)
@@ -64,12 +67,12 @@ def update_item_status(item_id: int, new_status: str):
              st.toast(f"Error updating item {item_id}", icon="🔥")
     except Exception as e:
         st.error(f"Connection error to n8n: {e}")
+# -----------------------------------------------------
 
 @st.cache_data(ttl=60) # Cache menu for 60 seconds
 def get_menu_items():
     """Fetches all menu items from the Supabase database."""
     try:
-        # Fetch items, ordering by ID
         response = supabase.table('menu_items').select('id, metadata').order('id').execute()
         return response.data
     except Exception as e:
@@ -99,26 +102,21 @@ with st.expander("➕ Add a New Menu Item"):
         submitted = st.form_submit_button("Save New Item")
 
         if submitted:
-            # --- Form Validation ---
             if not main_image_file or not item_name or item_price <= 0:
                 st.error("Please fill in all required fields (*).")
             else:
                 with st.spinner("Processing... Uploading image and calling n8n..."):
                     try:
-                        # 1. Upload Main Image (using the corrected function)
                         main_image_url = upload_file_to_supabase(main_image_file)
                         
-                        # 2. Upload Other Images
                         other_image_urls = []
                         if other_image_files:
                             for file in other_image_files:
                                 other_image_urls.append(upload_file_to_supabase(file))
 
-                        # 3. Check if upload was successful
                         if not main_image_url:
                             st.error("Main image failed to upload. Aborting.")
                         else:
-                            # 4. Prepare data payload for n8n
                             n8n_payload = {
                                 "name": item_name,
                                 "price": item_price,
@@ -128,13 +126,12 @@ with st.expander("➕ Add a New Menu Item"):
                                 "other_image_urls": other_image_urls
                             }
 
-                            # 5. Call n8n Webhook
                             response = requests.post(N8N_ADD_ITEM_URL, json=n8n_payload)
                             
                             if response.status_code == 200:
                                 st.success(f"Item '{item_name}' added successfully!")
-                                st.cache_data.clear() # Clear cache to show new item
-                                st.rerun() # Refresh the page
+                                st.cache_data.clear()
+                                st.rerun()
                             else:
                                 st.error(f"Error from n8n (Status {response.status_code}): {response.text}")
                     
@@ -150,40 +147,33 @@ items = get_menu_items()
 if not items:
     st.info("No menu items found. Add one using the form above.")
 else:
-    # Create 3 responsive columns
     cols = st.columns(3)
     
     for i, item in enumerate(items):
         meta = item['metadata']
         item_id = item['id']
         
-        # Place each card in the next available column
         with cols[i % 3]:
             with st.container(border=True):
                 
-                # 1. Ad Image
                 st.image(
                     meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image'), 
                     use_column_width=True
                 )
                 
-                # 2. Item Name
                 st.subheader(meta.get('item_name', 'Unnamed Item'))
-                
-                # 3. Price
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                # 4. Active Status Dropdown
                 current_status = "Active" if meta.get('active', True) else "Inactive"
-                
-                # Use a unique key for the selectbox
                 selectbox_key = f"status_{item_id}"
                 
+                # --- FIX 2: Corrected st.selectbox call ---
                 st.selectbox(
                     "Status",
                     ("Active", "Inactive"),
                     index=0 if current_status == "Active" else 1,
                     key=selectbox_key,
                     on_change=update_item_status,
-                    args=(item_id, st.session_state[selectbox_key]) 
+                    args=(item_id,) # Only pass the item_id
                 )
+                # ---------------------------------------------
