@@ -16,7 +16,7 @@ st.set_page_config(
 try:
     N8N_ADD_ITEM_URL = st.secrets["n8n"]["add_item_webhook"]
     N8N_UPDATE_STATUS_URL = st.secrets["n8n"]["update_status_webhook"]
-    N8N_DELETE_ITEM_URL = st.secrets["n8n"]["delete_item_webhook"] # New
+    N8N_DELETE_ITEM_URL = st.secrets["n8n"]["delete_item_webhook"]
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
     SUPABASE_BUCKET = "menu-images" 
@@ -58,7 +58,6 @@ def update_item_status(item_id: int):
         if response.status_code == 200:
             st.toast(f"Item {item_id} set to {new_status}", icon="✅")
         else:
-             # FIX: Show detailed error from n8n
              st.error(f"Error updating item {item_id}. n8n said: {response.status_code} - {response.text}")
     except Exception as e:
         st.error(f"Connection error to n8n: {e}")
@@ -165,25 +164,35 @@ else:
         
         # Place each card in the next available column
         with cols[i % 3]:
-            # FIX: Set a fixed height for all cards to make them uniform
-            with st.container(border=True, height=600): 
+            # Use border=True, but no fixed height.
+            with st.container(border=True): 
                 
-                # FIX: Use use_container_width instead of use_column_width
+                # --- FIX: IMAGE RATIO ---
+                # Get the original URL
+                original_url = meta.get('main_image_url', 'https.placehold.co/600x400?text=No+Image')
+                
+                # Add the Supabase transformation parameters
+                # w_600 = 600px wide
+                # h_400 = 400px high (this creates a 3:2 ratio)
+                # c_cover = 'cover' mode (crops the image to fit)
+                transformed_url = f"{original_url}?transform=w_600,h_400,c_cover"
+                
                 st.image(
-                    meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image'), 
+                    transformed_url, 
                     use_container_width=True 
                 )
+                # --- END FIX ---
                 
                 st.subheader(meta.get('item_name', 'Unnamed Item'))
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                # NEW: Add truncated description
+                # Add truncated description
                 description = meta.get('full_description', '')
                 if len(description) > 100:
                     description = description[:100] + "..."
                 st.caption(description)
                 
-                # Create two columns for the status dropdown and delete button
+                # Create two columns for the status and delete button
                 c1, c2 = st.columns([2, 1])
                 
                 with c1:
@@ -202,7 +211,7 @@ else:
                 with c2:
                     st.write("") # Add a little space
                     st.write("") # Add a little space
-                    # NEW: Add Delete Button
+                    # Add Delete Button
                     st.button(
                         "Delete", 
                         key=f"delete_{item_id}", 
