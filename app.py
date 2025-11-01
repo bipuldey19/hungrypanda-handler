@@ -4,8 +4,8 @@ from supabase import create_client, Client
 import uuid  # For unique file names
 import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
-# --- NEW: Import the correct, working cookie manager ---
-from streamlit_cookie_controller import CookieController
+# --- NEW: Import the correct library you provided ---
+from streamlit-cookies-controller import CookieController
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -69,8 +69,8 @@ except KeyError as e:
 
 # --- 4. AUTHENTICATION LOGIC WITH COOKIES ---
 
-# Initialize the cookie manager
-cookies = CookieController(key="auth_cookie_key")
+# Initialize the cookie controller
+cookies = CookieController()
 
 # Check for the cookie first when initializing session_state
 if "authenticated" not in st.session_state:
@@ -252,36 +252,4 @@ else:
         item_id = item['id']
         item_name_alt = meta.get('item_name', 'Unnamed Item')
         
-        with cols[i % 3]:
-            with st.container(border=True): 
-                image_url = meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image')
-                st.markdown(
-                    f'<div class="card-image-container"><img src="{image_url}" alt="{item_name_alt}"></div>',
-                    unsafe_allow_html=True
-                )
-                st.subheader(item_name_alt)
-                st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
-                description = meta.get('full_description', '')
-                if len(description) > 100:
-                    description = description[:100] + "..."
-                st.caption(description)
-                
-                c1, c2 = st.columns([2, 1])
-                with c1:
-                    current_status = "Active" if meta.get('active', True) else "Inactive"
-                    selectbox_key = f"status_{item_id}"
-                    st.selectbox(
-                        "Status",
-                        ("Active", "Inactive"),
-                        index=0 if current_status == "Active" else 1,
-                        key=selectbox_key,
-                        on_change=update_item_status,
-                        args=(item_id,)
-                    )
-                with c2:
-                    st.write("") 
-                    st.write("") 
-                    if st.button("Delete", key=f"delete_{item_id}", type="primary"):
-                        st.session_state.item_to_delete = item_id
-                        st.session_state.item_name_to_delete = item_name_alt
-                        st.rerun()
+        with cols
