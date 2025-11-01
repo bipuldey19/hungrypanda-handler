@@ -4,7 +4,7 @@ from supabase import create_client, Client
 import uuid  # For unique file names
 import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
-from streamlit_cookies_manager import CookieManager # <-- NEW: Import cookie manager
+from streamlit_cookies_manager import CookieManager # Import cookie manager
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -16,7 +16,6 @@ st.set_page_config(
 # --- 2. CSS FOR UNIFORM CARDS ---
 st.markdown("""
 <style>
-    /* ... (Your CSS for uniform cards) ... */
     [data-testid="stVerticalBlockBorderWrapper"] {
         display: flex;
         flex-direction: column;
@@ -35,7 +34,7 @@ st.markdown("""
         left: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: cover; /* This crops the image to fit */
     }
     [data-testid="stVerticalBlockBorderWrapper"] h3 {
          font-size: 1.25rem; 
@@ -59,7 +58,7 @@ try:
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
     SUPABASE_BUCKET = "menu-images" 
-    APP_PASSWORD = st.secrets["app"]["password"]
+    APP_PASSWORD = st.secrets["app"]["password"] # Load the password
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except KeyError as e:
@@ -68,15 +67,17 @@ except KeyError as e:
 
 # --- 4. AUTHENTICATION LOGIC WITH COOKIES ---
 
-# Initialize the cookie manager
-cookies = CookieManager(key="auth_cookie_key")
+# Initialize the cookie manager --- THIS IS THE FIX ---
+cookies = CookieManager()
+# ----------------------------------------------------
+
 if not cookies.ready():
     # This is a one-time setup on the first page load
     st.stop()
 
 # Check for the cookie first when initializing session_state
 if "authenticated" not in st.session_state:
-    auth_cookie = cookies.get("auth_cookie")
+    auth_cookie = cookies.get("auth_cookie") # Get cookie
     if auth_cookie == APP_PASSWORD:
         st.session_state.authenticated = True
     else:
@@ -107,6 +108,7 @@ if not st.session_state.authenticated:
     st.stop()
 
 # --- 5. HELPER FUNCTIONS (Main App) ---
+# These functions are only defined if the user is authenticated
 
 def upload_file_to_supabase(file: UploadedFile) -> str | None:
     try:
