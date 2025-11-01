@@ -6,6 +6,7 @@ import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
 
 # --- 1. PAGE CONFIGURATION ---
+# This MUST be the first Streamlit command in your app, and run only ONCE.
 st.set_page_config(
     page_title="Kitchen Menu Manager",
     layout="wide",
@@ -71,19 +72,22 @@ if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 def login_form():
-    """Displays a login form."""
-    st.set_page_config(layout="centered") # Center the login form
-    st.title("Admin Login")
-    with st.form("login_form"):
-        password = st.text_input("Password", type="password")
-        submitted = st.form_submit_button("Login")
-        
-        if submitted:
-            if password == APP_PASSWORD:
-                st.session_state.authenticated = True
-                st.rerun() # Rerun the script to show the main app
-            else:
-                st.error("Incorrect password")
+    """Displays a login form in the center of the page."""
+    # Use columns to center the login form
+    col1, col2, col3 = st.columns([1,1.5,1]) # Adjust ratios as needed
+    with col2:
+        with st.container(border=True):
+            st.title("Admin Login")
+            with st.form("login_form"):
+                password = st.text_input("Password", type="password")
+                submitted = st.form_submit_button("Login", use_container_width=True)
+                
+                if submitted:
+                    if password == APP_PASSWORD:
+                        st.session_state.authenticated = True
+                        st.rerun() # Rerun the script to show the main app
+                    else:
+                        st.error("Incorrect password")
 
 # If not authenticated, show login form and stop
 if not st.session_state.authenticated:
