@@ -4,9 +4,9 @@ from supabase import create_client, Client
 import uuid  # For unique file names
 import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
+from streamlit_cookies_manager import CookieManager # <-- NEW: Import cookie manager
 
 # --- 1. PAGE CONFIGURATION ---
-# This MUST be the first Streamlit command in your app, and run only ONCE.
 st.set_page_config(
     page_title="Kitchen Menu Manager",
     layout="wide",
@@ -16,6 +16,7 @@ st.set_page_config(
 # --- 2. CSS FOR UNIFORM CARDS ---
 st.markdown("""
 <style>
+    /* ... (Your CSS for uniform cards) ... */
     [data-testid="stVerticalBlockBorderWrapper"] {
         display: flex;
         flex-direction: column;
@@ -34,7 +35,7 @@ st.markdown("""
         left: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover; /* This crops the image to fit */
+        object-fit: cover;
     }
     [data-testid="stVerticalBlockBorderWrapper"] h3 {
          font-size: 1.25rem; 
@@ -58,23 +59,32 @@ try:
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
     SUPABASE_BUCKET = "menu-images" 
-    APP_PASSWORD = st.secrets["app"]["password"] # Load the password
+    APP_PASSWORD = st.secrets["app"]["password"]
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except KeyError as e:
     st.error(f"🚨 Critical Error: A secret is missing! Check your secrets.toml file. Missing key: {e}")
     st.stop()
 
-# --- 4. AUTHENTICATION LOGIC ---
+# --- 4. AUTHENTICATION LOGIC WITH COOKIES ---
 
-# Initialize session state
+# Initialize the cookie manager
+cookies = CookieManager(key="auth_cookie_key")
+if not cookies.ready():
+    # This is a one-time setup on the first page load
+    st.stop()
+
+# Check for the cookie first when initializing session_state
 if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+    auth_cookie = cookies.get("auth_cookie")
+    if auth_cookie == APP_PASSWORD:
+        st.session_state.authenticated = True
+    else:
+        st.session_state.authenticated = False
 
 def login_form():
     """Displays a login form in the center of the page."""
-    # Use columns to center the login form
-    col1, col2, col3 = st.columns([1,1.5,1]) # Adjust ratios as needed
+    col1, col2, col3 = st.columns([1,1.5,1])
     with col2:
         with st.container(border=True):
             st.title("Admin Login")
@@ -85,17 +95,18 @@ def login_form():
                 if submitted:
                     if password == APP_PASSWORD:
                         st.session_state.authenticated = True
-                        st.rerun() # Rerun the script to show the main app
+                        # Set the cookie to remember the login
+                        cookies.set("auth_cookie", APP_PASSWORD, key="set_cookie")
+                        st.rerun()
                     else:
                         st.error("Incorrect password")
 
 # If not authenticated, show login form and stop
 if not st.session_state.authenticated:
     login_form()
-    st.stop() # Stop the rest of the app from running
+    st.stop()
 
 # --- 5. HELPER FUNCTIONS (Main App) ---
-# These functions are only defined if the user is authenticated
 
 def upload_file_to_supabase(file: UploadedFile) -> str | None:
     try:
@@ -151,6 +162,8 @@ def get_menu_items():
 st.sidebar.title("Admin")
 if st.sidebar.button("Logout"):
     st.session_state.authenticated = False
+    # Delete the cookie on logout
+    cookies.delete("auth_cookie", key="delete_cookie")
     st.rerun()
 
 st.title("Cloud Kitchen Menu Manager")
@@ -207,7 +220,6 @@ with st.expander("➕ Add a New Menu Item"):
 st.divider()
 st.header("Manage Existing Menu")
 
-# --- Delete confirmation dialog logic ---
 @st.dialog("Confirm Deletion")
 def show_delete_dialog():
     item_id = st.session_state.item_to_delete
@@ -224,7 +236,6 @@ def show_delete_dialog():
         st.session_state.item_to_delete = None
         st.session_state.item_name_to_delete = ""
 
-# --- Initialize session state for dialog ---
 if "item_to_delete" not in st.session_state:
     st.session_state.item_to_delete = None
     st.session_state.item_name_to_delete = ""
