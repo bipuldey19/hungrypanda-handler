@@ -1,8 +1,9 @@
 import streamlit as st
 import requests
 from supabase import create_client, Client
-import uuid  # To create unique file names
+import uuid  # For unique file names
 import io      # To handle file bytes
+from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -18,8 +19,7 @@ try:
     N8N_UPDATE_STATUS_URL = st.secrets["n8n"]["update_status_webhook"]
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
-    # The name of your Supabase Storage bucket
-    SUPABASE_BUCKET = "menu-images" 
+    SUPABASE_BUCKET = "menu-images" # The name of your Supabase Storage bucket
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except KeyError:
@@ -28,16 +28,26 @@ except KeyError:
 
 # --- 3. HELPER FUNCTIONS (Back-end Logic) ---
 
-def upload_file_to_supabase(file: io.BytesIO, file_name: str) -> str:
-    """Uploads a file to Supabase Storage and returns the public URL."""
+def upload_file_to_supabase(file: UploadedFile) -> str | None:
+    """Uploads a Streamlit file object to Supabase Storage and returns the public URL."""
     try:
+        # Get the raw bytes from the file object
+        file_bytes = file.getvalue()
+        
+        # Create a unique file path
+        file_ext = file.name.split('.')[-1]
+        file_path = f"public/{uuid.uuid4()}.{file_ext}"
+
+        # Upload the bytes
         supabase.storage.from_(SUPABASE_BUCKET).upload(
-            file=file,
-            path=file_name,
+            file=file_bytes, # <-- THE FIX: Pass the bytes, not the file object
+            path=file_path,
             file_options={"content-type": file.type}
         )
+        
         # Return the public URL
-        return supabase.storage.from_(SUPABASE_BUCKET).get_public_url(file_name)
+        return supabase.storage.from_(SUPABASE_BUCKET).get_public_url(file_path)
+    
     except Exception as e:
         st.error(f"Storage Error: {str(e)}")
         return None
@@ -47,10 +57,11 @@ def update_item_status(item_id: int, new_status: str):
     try:
         payload = {"item_id": item_id, "active": (new_status == "Active")}
         response = requests.post(N8N_UPDATE_STATUS_URL, json=payload)
-        if response.status_code != 200:
-             st.toast(f"Error updating item {item_id}", icon="🔥")
-        else:
+        
+        if response.status_code == 200:
             st.toast(f"Item {item_id} set to {new_status}", icon="✅")
+        else:
+             st.toast(f"Error updating item {item_id}", icon="🔥")
     except Exception as e:
         st.error(f"Connection error to n8n: {e}")
 
@@ -58,7 +69,8 @@ def update_item_status(item_id: int, new_status: str):
 def get_menu_items():
     """Fetches all menu items from the Supabase database."""
     try:
-        response = supabase.table('menu_items').select('id, metadata').execute()
+        # Fetch items, ordering by ID
+        response = supabase.table('menu_items').select('id, metadata').order('id').execute()
         return response.data
     except Exception as e:
         st.error(f"Database Error: {e}")
@@ -93,36 +105,38 @@ with st.expander("➕ Add a New Menu Item"):
             else:
                 with st.spinner("Processing... Uploading image and calling n8n..."):
                     try:
-                        # 1. Upload Main Image to Supabase Storage
-                        file_ext = main_image_file.name.split('.')[-1]
-                        file_path = f"public/{uuid.uuid4()}.{file_ext}"
-                        main_image_url = upload_file_to_supabase(main_image_file, file_path)
-
-                        # 2. (Optional) Upload Other Images
-                        other_image_urls = []
-                        for file in other_image_files:
-                            other_file_ext = file.name.split('.')[-1]
-                            other_file_path = f"public/{uuid.uuid4()}.{other_file_ext}"
-                            other_image_urls.append(upload_file_to_supabase(file, other_file_path))
-
-                        # 3. Prepare data payload for n8n
-                        n8n_payload = {
-                            "name": item_name,
-                            "price": item_price,
-                            "description": item_desc,
-                            "ingredients": item_ingredients,
-                            "main_image_url": main_image_url,
-                            "other_image_urls": other_image_urls
-                        }
-
-                        # 4. Call n8n Webhook to process data
-                        response = requests.post(N8N_ADD_ITEM_URL, json=n8n_payload)
+                        # 1. Upload Main Image (using the corrected function)
+                        main_image_url = upload_file_to_supabase(main_image_file)
                         
-                        if response.status_code == 200:
-                            st.success(f"Item '{item_name}' added successfully!")
-                            st.cache_data.clear() # Clear cache to show new item
+                        # 2. Upload Other Images
+                        other_image_urls = []
+                        if other_image_files:
+                            for file in other_image_files:
+                                other_image_urls.append(upload_file_to_supabase(file))
+
+                        # 3. Check if upload was successful
+                        if not main_image_url:
+                            st.error("Main image failed to upload. Aborting.")
                         else:
-                            st.error(f"Error from n8n (Status {response.status_code}): {response.text}")
+                            # 4. Prepare data payload for n8n
+                            n8n_payload = {
+                                "name": item_name,
+                                "price": item_price,
+                                "description": item_desc,
+                                "ingredients": item_ingredients,
+                                "main_image_url": main_image_url,
+                                "other_image_urls": other_image_urls
+                            }
+
+                            # 5. Call n8n Webhook
+                            response = requests.post(N8N_ADD_ITEM_URL, json=n8n_payload)
+                            
+                            if response.status_code == 200:
+                                st.success(f"Item '{item_name}' added successfully!")
+                                st.cache_data.clear() # Clear cache to show new item
+                                st.rerun() # Refresh the page
+                            else:
+                                st.error(f"Error from n8n (Status {response.status_code}): {response.text}")
                     
                     except Exception as e:
                         st.error(f"An error occurred: {e}")
@@ -162,11 +176,14 @@ else:
                 # 4. Active Status Dropdown
                 current_status = "Active" if meta.get('active', True) else "Inactive"
                 
+                # Use a unique key for the selectbox
+                selectbox_key = f"status_{item_id}"
+                
                 st.selectbox(
                     "Status",
                     ("Active", "Inactive"),
                     index=0 if current_status == "Active" else 1,
-                    key=f"status_{item_id}", # Unique key for this widget
+                    key=selectbox_key,
                     on_change=update_item_status,
-                    args=(item_id, st.session_state[f"status_{item_id}"]) # Passes the NEW value
+                    args=(item_id, st.session_state[selectbox_key]) 
                 )
