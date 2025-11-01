@@ -13,18 +13,14 @@ st.set_page_config(
 )
 
 # --- 2. CSS FOR FIXED IMAGE RATIO ---
-# This CSS creates a 3:2 aspect ratio container.
-# The image inside will be cropped to fit ('object-fit: cover').
 st.markdown("""
 <style>
 .image-container {
     position: relative;
     width: 100%;
-    padding-bottom: 66.66%; /* This creates a 3:2 Aspect Ratio (2 / 3 * 100) */
-    /* For a 1:1 square, use: padding-bottom: 100%; */
-    /* For a 4:3 ratio, use: padding-bottom: 75%; */
+    padding-bottom: 66.66%; /* 3:2 Aspect Ratio */
     overflow: hidden;
-    border-radius: 7px; /* Optional: matches Streamlit's card border radius */
+    border-radius: 7px;
 }
 .image-container img {
     position: absolute;
@@ -32,7 +28,7 @@ st.markdown("""
     left: 0;
     width: 100%;
     height: 100%;
-    object-fit: cover; /* This makes the image cover the box, cropping if needed */
+    object-fit: cover; /* This crops the image to fit */
 }
 </style>
 """, unsafe_allow_html=True)
@@ -187,14 +183,12 @@ else:
         item_id = item['id']
         
         with cols[i % 3]:
-            # Removed fixed height from the card container
             with st.container(border=True): 
                 
-                # --- FIX: USE CSS HACK FOR IMAGE RATIO ---
+                # --- USE CSS HACK FOR IMAGE RATIO ---
                 image_url = meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image')
                 item_name_alt = meta.get('item_name', 'Menu Item')
                 
-                # Use st.markdown to create the custom HTML
                 st.markdown(
                     f"""
                     <div class="image-container">
@@ -203,16 +197,15 @@ else:
                     """,
                     unsafe_allow_html=True
                 )
-                # --- END FIX ---
                 
                 st.subheader(item_name_alt)
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                # Add truncated description with a fixed height
+                # --- FIX: REMOVED "height=80" ARGUMENT ---
                 description = meta.get('full_description', '')
                 if len(description) > 100:
                     description = description[:100] + "..."
-                st.caption(description, height=80) # Fixed height for caption
+                st.caption(description) # This line is now fixed
                 
                 c1, c2 = st.columns([2, 1])
                 
@@ -232,7 +225,6 @@ else:
                 with c2:
                     st.write("") 
                     st.write("") 
-                    # Add Delete Button
                     st.button(
                         "Delete", 
                         key=f"delete_{item_id}", 
