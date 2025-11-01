@@ -4,8 +4,8 @@ from supabase import create_client, Client
 import uuid  # For unique file names
 import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
-# --- THE FIX: Changed hyphen to underscore ---
-from streamlit_cookie_controller import CookieController
+# --- NEW: Import the correct library from your documentation ---
+import extra_streamlit_components as stx
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -69,12 +69,16 @@ except KeyError as e:
 
 # --- 4. AUTHENTICATION LOGIC WITH COOKIES ---
 
-# Initialize the cookie controller
-cookies = CookieController()
+# Initialize the cookie manager using the @st.fragment method
+@st.fragment
+def get_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_manager()
 
 # Check for the cookie first when initializing session_state
 if "authenticated" not in st.session_state:
-    auth_cookie = cookies.get("auth_cookie") # Get cookie
+    auth_cookie = cookie_manager.get("auth_cookie") # Get cookie
     if auth_cookie == APP_PASSWORD:
         st.session_state.authenticated = True
     else:
@@ -94,7 +98,7 @@ def login_form():
                     if password == APP_PASSWORD:
                         st.session_state.authenticated = True
                         # Set the cookie to remember the login
-                        cookies.set("auth_cookie", APP_PASSWORD)
+                        cookie_manager.set("auth_cookie", APP_PASSWORD)
                         st.rerun()
                     else:
                         st.error("Incorrect password")
@@ -161,7 +165,7 @@ st.sidebar.title("Admin")
 if st.sidebar.button("Logout"):
     st.session_state.authenticated = False
     # Delete the cookie on logout
-    cookies.remove("auth_cookie")
+    cookie_manager.delete("auth_cookie")
     st.rerun()
 
 st.title("Cloud Kitchen Menu Manager")
