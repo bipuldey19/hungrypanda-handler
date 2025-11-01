@@ -33,7 +33,7 @@ st.markdown("""
         left: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: cover; /* This crops the image to fit */
     }
     [data-testid="stVerticalBlockBorderWrapper"] h3 {
          font-size: 1.25rem; 
@@ -53,17 +53,45 @@ st.markdown("""
 try:
     N8N_ADD_ITEM_URL = st.secrets["n8n"]["add_item_webhook"]
     N8N_UPDATE_STATUS_URL = st.secrets["n8n"]["update_status_webhook"]
-    N8N_DELETE_ITEM_URL = st.secrets["n8n"]["delete_item_webhook"] # <-- Make sure this is in secrets.toml
+    N8N_DELETE_ITEM_URL = st.secrets["n8n"]["delete_item_webhook"]
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
     SUPABASE_BUCKET = "menu-images" 
+    APP_PASSWORD = st.secrets["app"]["password"] # Load the password
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except KeyError as e:
     st.error(f"🚨 Critical Error: A secret is missing! Check your secrets.toml file. Missing key: {e}")
     st.stop()
 
-# --- 4. HELPER FUNCTIONS (Back-end Logic) ---
+# --- 4. AUTHENTICATION LOGIC ---
+
+# Initialize session state
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+def login_form():
+    """Displays a login form."""
+    st.set_page_config(layout="centered") # Center the login form
+    st.title("Admin Login")
+    with st.form("login_form"):
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login")
+        
+        if submitted:
+            if password == APP_PASSWORD:
+                st.session_state.authenticated = True
+                st.rerun() # Rerun the script to show the main app
+            else:
+                st.error("Incorrect password")
+
+# If not authenticated, show login form and stop
+if not st.session_state.authenticated:
+    login_form()
+    st.stop() # Stop the rest of the app from running
+
+# --- 5. HELPER FUNCTIONS (Main App) ---
+# These functions are only defined if the user is authenticated
 
 def upload_file_to_supabase(file: UploadedFile) -> str | None:
     try:
@@ -93,17 +121,14 @@ def update_item_status(item_id: int):
     except Exception as e:
         st.error(f"Connection error to n8n: {e}")
 
-# --- NEW: Delete Item function (called by the dialog) ---
 def delete_item(item_id: int):
-    """Callback function to trigger the n8n webhook for deletion."""
     try:
         payload = {"item_id": item_id}
         response = requests.post(N8N_DELETE_ITEM_URL, json=payload)
-        
         if response.status_code == 200:
             st.toast(f"Item {item_id} deleted!", icon="🗑️")
-            st.cache_data.clear() # Clear cache
-            st.rerun() # Refresh the page
+            st.cache_data.clear() 
+            st.rerun() 
         else:
              st.error(f"Error deleting item {item_id}. n8n said: {response.status_code} - {response.text}")
     except Exception as e:
@@ -118,7 +143,12 @@ def get_menu_items():
         st.error(f"Database Error: {e}")
         return []
 
-# --- 5. "ADD NEW ITEM" FORM ---
+# --- 6. "ADD NEW ITEM" FORM (Main App) ---
+st.sidebar.title("Admin")
+if st.sidebar.button("Logout"):
+    st.session_state.authenticated = False
+    st.rerun()
+
 st.title("Cloud Kitchen Menu Manager")
 
 with st.expander("➕ Add a New Menu Item"):
@@ -134,6 +164,7 @@ with st.expander("➕ Add a New Menu Item"):
         st.subheader("Images")
         main_image_file = st.file_uploader("Main Ad Image*", type=["jpg", "png", "jpeg"])
         other_image_files = st.file_uploader("Other Images (Optional)", type=["jpg", "png", "jpeg"], accept_multiple_files=True)
+        
         submitted = st.form_submit_button("Save New Item")
 
         if submitted:
@@ -168,37 +199,32 @@ with st.expander("➕ Add a New Menu Item"):
                     except Exception as e:
                         st.error(f"An error occurred: {e}")
 
-# --- 6. "MANAGE EXISTING ITEMS" DISPLAY ---
+# --- 7. "MANAGE EXISTING ITEMS" DISPLAY (Main App) ---
 st.divider()
 st.header("Manage Existing Menu")
 
-# --- NEW: Initialize session state for dialog ---
-if "item_to_delete" not in st.session_state:
-    st.session_state.item_to_delete = None
-    st.session_state.item_name_to_delete = ""
-
-# --- NEW: Delete confirmation dialog logic ---
+# --- Delete confirmation dialog logic ---
 @st.dialog("Confirm Deletion")
 def show_delete_dialog():
     item_id = st.session_state.item_to_delete
     item_name = st.session_state.item_name_to_delete
-    
     st.error(f"Are you sure you want to delete **{item_name}** (ID: {item_id})?")
     st.warning("This will delete the item from the database and all its images from storage. This action cannot be undone.")
-    
     col1, col2 = st.columns(2)
     if col1.button("Cancel", use_container_width=True):
         st.session_state.item_to_delete = None
         st.session_state.item_name_to_delete = ""
         st.rerun()
-        
     if col2.button("Confirm Delete", type="primary", use_container_width=True):
         delete_item(item_id)
         st.session_state.item_to_delete = None
         st.session_state.item_name_to_delete = ""
-        # The delete_item() function will already call st.rerun() on success
 
-# --- Show the dialog if an item is selected for deletion ---
+# --- Initialize session state for dialog ---
+if "item_to_delete" not in st.session_state:
+    st.session_state.item_to_delete = None
+    st.session_state.item_name_to_delete = ""
+
 if st.session_state.item_to_delete:
     show_delete_dialog()
 
@@ -208,7 +234,6 @@ if not items:
     st.info("No menu items found. Add one using the form above.")
 else:
     cols = st.columns(3)
-    
     for i, item in enumerate(items):
         meta = item['metadata']
         item_id = item['id']
@@ -221,17 +246,14 @@ else:
                     f'<div class="card-image-container"><img src="{image_url}" alt="{item_name_alt}"></div>',
                     unsafe_allow_html=True
                 )
-                
                 st.subheader(item_name_alt)
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
-                
                 description = meta.get('full_description', '')
                 if len(description) > 100:
                     description = description[:100] + "..."
                 st.caption(description)
                 
                 c1, c2 = st.columns([2, 1])
-                
                 with c1:
                     current_status = "Active" if meta.get('active', True) else "Inactive"
                     selectbox_key = f"status_{item_id}"
@@ -243,11 +265,9 @@ else:
                         on_change=update_item_status,
                         args=(item_id,)
                     )
-                
                 with c2:
                     st.write("") 
                     st.write("") 
-                    # --- NEW: Delete button now opens the dialog ---
                     if st.button("Delete", key=f"delete_{item_id}", type="primary"):
                         st.session_state.item_to_delete = item_id
                         st.session_state.item_name_to_delete = item_name_alt
