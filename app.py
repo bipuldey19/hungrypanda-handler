@@ -13,12 +13,10 @@ st.set_page_config(
 )
 
 # --- 2. CSS FOR UNIFORM CARDS ---
-# This CSS fixes the uneven card heights from your screenshot.
 st.markdown("""
 <style>
     /* This targets the Streamlit container (st.container) with a border */
     [data-testid="stVerticalBlockBorderWrapper"] {
-        /* Use flex to make all cards the same height */
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -41,11 +39,15 @@ st.markdown("""
         object-fit: cover; /* This crops the image to fit */
     }
     
-    /* 2. Fix the Title Height */
+    /* 2. FIX: Make the Title Font Smaller */
     /* Targets the <h3> tag Streamlit uses for st.subheader */
     [data-testid="stVerticalBlockBorderWrapper"] h3 {
-         min-height: 2.5em; /* Gives all titles space for 2 lines */
-         max-height: 2.5em;
+         /* Default is 1.75rem. Let's make it smaller. */
+         font-size: 1.25rem; 
+         
+         /* Reserve space for 2 lines to keep alignment */
+         min-height: 2.4em; 
+         max-height: 2.4em;
          overflow: hidden;
     }
 
@@ -212,7 +214,6 @@ else:
             # The CSS will target this container
             with st.container(border=True): 
                 
-                # --- FIX: USE CSS HACK FOR IMAGE RATIO ---
                 image_url = meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image')
                 item_name_alt = meta.get('item_name', 'Menu Item')
                 
@@ -225,14 +226,13 @@ else:
                     unsafe_allow_html=True
                 )
                 
-                st.subheader(item_name_alt)
+                st.subheader(item_name_alt) # The CSS will make this smaller
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                # --- FIX: Truncate text but do NOT set height param ---
                 description = meta.get('full_description', '')
                 if len(description) > 100:
                     description = description[:100] + "..."
-                st.caption(description) # CSS will handle the height
+                st.caption(description) # The CSS will give this a min-height
                 
                 c1, c2 = st.columns([2, 1])
                 
