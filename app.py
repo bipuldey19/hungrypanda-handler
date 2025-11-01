@@ -12,24 +12,50 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. CSS FOR FIXED IMAGE RATIO ---
+# --- 2. CSS FOR UNIFORM CARDS ---
+# This CSS fixes the uneven card heights from your screenshot.
 st.markdown("""
 <style>
-.image-container {
-    position: relative;
-    width: 100%;
-    padding-bottom: 66.66%; /* 3:2 Aspect Ratio */
-    overflow: hidden;
-    border-radius: 7px;
-}
-.image-container img {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover; /* This crops the image to fit */
-}
+    /* This targets the Streamlit container (st.container) with a border */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        /* Use flex to make all cards the same height */
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    /* 1. Fix the Image Ratio */
+    .card-image-container {
+        position: relative;
+        width: 100%;
+        padding-bottom: 66.66%; /* 3:2 Aspect Ratio */
+        overflow: hidden;
+        border-radius: 7px; 
+    }
+    .card-image-container img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover; /* This crops the image to fit */
+    }
+    
+    /* 2. Fix the Title Height */
+    /* Targets the <h3> tag Streamlit uses for st.subheader */
+    [data-testid="stVerticalBlockBorderWrapper"] h3 {
+         min-height: 2.5em; /* Gives all titles space for 2 lines */
+         max-height: 2.5em;
+         overflow: hidden;
+    }
+
+    /* 3. Fix the Caption/Description Height */
+    /* Targets the <p> tag Streamlit uses for st.caption */
+    [data-testid="stVerticalBlockBorderWrapper"] [data-testid="stCaptionContainer"] p {
+        min-height: 3.6em; /* Gives all captions space for ~3 lines */
+        max-height: 3.6em;
+        overflow: hidden;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -183,15 +209,16 @@ else:
         item_id = item['id']
         
         with cols[i % 3]:
+            # The CSS will target this container
             with st.container(border=True): 
                 
-                # --- USE CSS HACK FOR IMAGE RATIO ---
+                # --- FIX: USE CSS HACK FOR IMAGE RATIO ---
                 image_url = meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image')
                 item_name_alt = meta.get('item_name', 'Menu Item')
                 
                 st.markdown(
                     f"""
-                    <div class="image-container">
+                    <div class="card-image-container">
                         <img src="{image_url}" alt="{item_name_alt}">
                     </div>
                     """,
@@ -201,11 +228,11 @@ else:
                 st.subheader(item_name_alt)
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                # --- FIX: REMOVED "height=80" ARGUMENT ---
+                # --- FIX: Truncate text but do NOT set height param ---
                 description = meta.get('full_description', '')
                 if len(description) > 100:
                     description = description[:100] + "..."
-                st.caption(description) # This line is now fixed
+                st.caption(description) # CSS will handle the height
                 
                 c1, c2 = st.columns([2, 1])
                 
