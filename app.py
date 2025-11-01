@@ -16,13 +16,14 @@ st.set_page_config(
 try:
     N8N_ADD_ITEM_URL = st.secrets["n8n"]["add_item_webhook"]
     N8N_UPDATE_STATUS_URL = st.secrets["n8n"]["update_status_webhook"]
+    N8N_DELETE_ITEM_URL = st.secrets["n8n"]["delete_item_webhook"] # New
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
-    SUPABASE_BUCKET = "menu-images" # The name of your Supabase Storage bucket
+    SUPABASE_BUCKET = "menu-images" 
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-except KeyError:
-    st.error("🚨 Critical Error: Supabase or n8n secrets are not set in st.secrets.")
+except KeyError as e:
+    st.error(f"🚨 Critical Error: A secret is missing! Check your secrets.toml file. Missing key: {e}")
     st.stop()
 
 # --- 3. HELPER FUNCTIONS (Back-end Logic) ---
@@ -45,16 +46,9 @@ def upload_file_to_supabase(file: UploadedFile) -> str | None:
         st.error(f"Storage Error: {str(e)}")
         return None
 
-# --- FIX 1: Corrected update_item_status function ---
 def update_item_status(item_id: int):
-    """
-    Callback function to trigger the n8n webhook.
-    It reads the new value from st.session_state using the item_id.
-    """
-    # Build the key inside the callback
+    """Callback function to trigger the n8n webhook for status update."""
     key = f"status_{item_id}"
-    
-    # Read the new value from session_state
     new_status = st.session_state[key]
     
     try:
@@ -64,10 +58,25 @@ def update_item_status(item_id: int):
         if response.status_code == 200:
             st.toast(f"Item {item_id} set to {new_status}", icon="✅")
         else:
-             st.toast(f"Error updating item {item_id}", icon="🔥")
+             # FIX: Show detailed error from n8n
+             st.error(f"Error updating item {item_id}. n8n said: {response.status_code} - {response.text}")
     except Exception as e:
         st.error(f"Connection error to n8n: {e}")
-# -----------------------------------------------------
+
+def delete_item(item_id: int):
+    """Callback function to trigger the n8n webhook for deletion."""
+    try:
+        payload = {"item_id": item_id}
+        response = requests.post(N8N_DELETE_ITEM_URL, json=payload)
+        
+        if response.status_code == 200:
+            st.toast(f"Item {item_id} deleted!", icon="🗑️")
+            st.cache_data.clear() # Clear cache
+            st.rerun() # Refresh the page
+        else:
+             st.error(f"Error deleting item {item_id}. n8n said: {response.status_code} - {response.text}")
+    except Exception as e:
+        st.error(f"Connection error to n8n: {e}")
 
 @st.cache_data(ttl=60) # Cache menu for 60 seconds
 def get_menu_items():
@@ -79,7 +88,7 @@ def get_menu_items():
         st.error(f"Database Error: {e}")
         return []
 
-# --- 4. "ADD NEW ITEM" FORM (Requirement #3) ---
+# --- 4. "ADD NEW ITEM" FORM ---
 st.title("Cloud Kitchen Menu Manager")
 
 with st.expander("➕ Add a New Menu Item"):
@@ -138,7 +147,7 @@ with st.expander("➕ Add a New Menu Item"):
                     except Exception as e:
                         st.error(f"An error occurred: {e}")
 
-# --- 5. "MANAGE EXISTING ITEMS" DISPLAY (Requirement #1 & #2) ---
+# --- 5. "MANAGE EXISTING ITEMS" DISPLAY ---
 st.divider()
 st.header("Manage Existing Menu")
 
@@ -147,33 +156,57 @@ items = get_menu_items()
 if not items:
     st.info("No menu items found. Add one using the form above.")
 else:
+    # Create 3 responsive columns
     cols = st.columns(3)
     
     for i, item in enumerate(items):
         meta = item['metadata']
         item_id = item['id']
         
+        # Place each card in the next available column
         with cols[i % 3]:
-            with st.container(border=True):
+            # FIX: Set a fixed height for all cards to make them uniform
+            with st.container(border=True, height=600): 
                 
+                # FIX: Use use_container_width instead of use_column_width
                 st.image(
                     meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image'), 
-                    use_column_width=True
+                    use_container_width=True 
                 )
                 
                 st.subheader(meta.get('item_name', 'Unnamed Item'))
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                current_status = "Active" if meta.get('active', True) else "Inactive"
-                selectbox_key = f"status_{item_id}"
+                # NEW: Add truncated description
+                description = meta.get('full_description', '')
+                if len(description) > 100:
+                    description = description[:100] + "..."
+                st.caption(description)
                 
-                # --- FIX 2: Corrected st.selectbox call ---
-                st.selectbox(
-                    "Status",
-                    ("Active", "Inactive"),
-                    index=0 if current_status == "Active" else 1,
-                    key=selectbox_key,
-                    on_change=update_item_status,
-                    args=(item_id,) # Only pass the item_id
-                )
-                # ---------------------------------------------
+                # Create two columns for the status dropdown and delete button
+                c1, c2 = st.columns([2, 1])
+                
+                with c1:
+                    current_status = "Active" if meta.get('active', True) else "Inactive"
+                    selectbox_key = f"status_{item_id}"
+                    
+                    st.selectbox(
+                        "Status",
+                        ("Active", "Inactive"),
+                        index=0 if current_status == "Active" else 1,
+                        key=selectbox_key,
+                        on_change=update_item_status,
+                        args=(item_id,)
+                    )
+                
+                with c2:
+                    st.write("") # Add a little space
+                    st.write("") # Add a little space
+                    # NEW: Add Delete Button
+                    st.button(
+                        "Delete", 
+                        key=f"delete_{item_id}", 
+                        on_click=delete_item, 
+                        args=(item_id,),
+                        type="primary"
+                    )
