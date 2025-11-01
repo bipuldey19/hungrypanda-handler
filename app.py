@@ -12,7 +12,32 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- 2. LOAD SECRETS & INITIALIZE CLIENTS ---
+# --- 2. CSS FOR FIXED IMAGE RATIO ---
+# This CSS creates a 3:2 aspect ratio container.
+# The image inside will be cropped to fit ('object-fit: cover').
+st.markdown("""
+<style>
+.image-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 66.66%; /* This creates a 3:2 Aspect Ratio (2 / 3 * 100) */
+    /* For a 1:1 square, use: padding-bottom: 100%; */
+    /* For a 4:3 ratio, use: padding-bottom: 75%; */
+    overflow: hidden;
+    border-radius: 7px; /* Optional: matches Streamlit's card border radius */
+}
+.image-container img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* This makes the image cover the box, cropping if needed */
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- 3. LOAD SECRETS & INITIALIZE CLIENTS ---
 try:
     N8N_ADD_ITEM_URL = st.secrets["n8n"]["add_item_webhook"]
     N8N_UPDATE_STATUS_URL = st.secrets["n8n"]["update_status_webhook"]
@@ -26,7 +51,7 @@ except KeyError as e:
     st.error(f"🚨 Critical Error: A secret is missing! Check your secrets.toml file. Missing key: {e}")
     st.stop()
 
-# --- 3. HELPER FUNCTIONS (Back-end Logic) ---
+# --- 4. HELPER FUNCTIONS (Back-end Logic) ---
 
 def upload_file_to_supabase(file: UploadedFile) -> str | None:
     """Uploads a Streamlit file object to Supabase Storage and returns the public URL."""
@@ -70,14 +95,14 @@ def delete_item(item_id: int):
         
         if response.status_code == 200:
             st.toast(f"Item {item_id} deleted!", icon="🗑️")
-            st.cache_data.clear() # Clear cache
-            st.rerun() # Refresh the page
+            st.cache_data.clear()
+            st.rerun()
         else:
              st.error(f"Error deleting item {item_id}. n8n said: {response.status_code} - {response.text}")
     except Exception as e:
         st.error(f"Connection error to n8n: {e}")
 
-@st.cache_data(ttl=60) # Cache menu for 60 seconds
+@st.cache_data(ttl=60)
 def get_menu_items():
     """Fetches all menu items from the Supabase database."""
     try:
@@ -87,7 +112,7 @@ def get_menu_items():
         st.error(f"Database Error: {e}")
         return []
 
-# --- 4. "ADD NEW ITEM" FORM ---
+# --- 5. "ADD NEW ITEM" FORM ---
 st.title("Cloud Kitchen Menu Manager")
 
 with st.expander("➕ Add a New Menu Item"):
@@ -146,7 +171,7 @@ with st.expander("➕ Add a New Menu Item"):
                     except Exception as e:
                         st.error(f"An error occurred: {e}")
 
-# --- 5. "MANAGE EXISTING ITEMS" DISPLAY ---
+# --- 6. "MANAGE EXISTING ITEMS" DISPLAY ---
 st.divider()
 st.header("Manage Existing Menu")
 
@@ -155,44 +180,40 @@ items = get_menu_items()
 if not items:
     st.info("No menu items found. Add one using the form above.")
 else:
-    # Create 3 responsive columns
     cols = st.columns(3)
     
     for i, item in enumerate(items):
         meta = item['metadata']
         item_id = item['id']
         
-        # Place each card in the next available column
         with cols[i % 3]:
-            # Use border=True, but no fixed height.
+            # Removed fixed height from the card container
             with st.container(border=True): 
                 
-                # --- FIX: IMAGE RATIO ---
-                # Get the original URL
-                original_url = meta.get('main_image_url', 'https.placehold.co/600x400?text=No+Image')
+                # --- FIX: USE CSS HACK FOR IMAGE RATIO ---
+                image_url = meta.get('main_image_url', 'https://placehold.co/600x400?text=No+Image')
+                item_name_alt = meta.get('item_name', 'Menu Item')
                 
-                # Add the Supabase transformation parameters
-                # w_600 = 600px wide
-                # h_400 = 400px high (this creates a 3:2 ratio)
-                # c_cover = 'cover' mode (crops the image to fit)
-                transformed_url = f"{original_url}?transform=w_600,h_400,c_cover"
-                
-                st.image(
-                    transformed_url, 
-                    use_container_width=True 
+                # Use st.markdown to create the custom HTML
+                st.markdown(
+                    f"""
+                    <div class="image-container">
+                        <img src="{image_url}" alt="{item_name_alt}">
+                    </div>
+                    """,
+                    unsafe_allow_html=True
                 )
                 # --- END FIX ---
                 
-                st.subheader(meta.get('item_name', 'Unnamed Item'))
+                st.subheader(item_name_alt)
                 st.markdown(f"**Price:** {meta.get('price', 0)} BDT")
                 
-                # Add truncated description
+                # Add truncated description with a fixed height
                 description = meta.get('full_description', '')
                 if len(description) > 100:
                     description = description[:100] + "..."
-                st.caption(description)
+                st.caption(description, height=80) # Fixed height for caption
                 
-                # Create two columns for the status and delete button
                 c1, c2 = st.columns([2, 1])
                 
                 with c1:
@@ -209,8 +230,8 @@ else:
                     )
                 
                 with c2:
-                    st.write("") # Add a little space
-                    st.write("") # Add a little space
+                    st.write("") 
+                    st.write("") 
                     # Add Delete Button
                     st.button(
                         "Delete", 
