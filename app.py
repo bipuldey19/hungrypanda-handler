@@ -4,7 +4,7 @@ from supabase import create_client, Client
 import uuid  # For unique file names
 import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
-from streamlit_cookies_manager import CookieManager # Import cookie manager
+from streamlit_cookie_manager import CookieManager # <-- NEW: Import singular library
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -16,6 +16,7 @@ st.set_page_config(
 # --- 2. CSS FOR UNIFORM CARDS ---
 st.markdown("""
 <style>
+    /* ... (Your CSS for uniform cards) ... */
     [data-testid="stVerticalBlockBorderWrapper"] {
         display: flex;
         flex-direction: column;
@@ -34,7 +35,7 @@ st.markdown("""
         left: 0;
         width: 100%;
         height: 100%;
-        object-fit: cover; /* This crops the image to fit */
+        object-fit: cover;
     }
     [data-testid="stVerticalBlockBorderWrapper"] h3 {
          font-size: 1.25rem; 
@@ -67,13 +68,8 @@ except KeyError as e:
 
 # --- 4. AUTHENTICATION LOGIC WITH COOKIES ---
 
-# Initialize the cookie manager --- THIS IS THE FIX ---
-cookies = CookieManager()
-# ----------------------------------------------------
-
-if not cookies.ready():
-    # This is a one-time setup on the first page load
-    st.stop()
+# Initialize the cookie manager. Must be run before all st elements
+cookies = CookieManager(key="auth_cookie_key") # Add a unique key
 
 # Check for the cookie first when initializing session_state
 if "authenticated" not in st.session_state:
@@ -97,7 +93,7 @@ def login_form():
                     if password == APP_PASSWORD:
                         st.session_state.authenticated = True
                         # Set the cookie to remember the login
-                        cookies.set("auth_cookie", APP_PASSWORD, key="set_cookie")
+                        cookies.set("auth_cookie", APP_PASSWORD)
                         st.rerun()
                     else:
                         st.error("Incorrect password")
@@ -108,7 +104,6 @@ if not st.session_state.authenticated:
     st.stop()
 
 # --- 5. HELPER FUNCTIONS (Main App) ---
-# These functions are only defined if the user is authenticated
 
 def upload_file_to_supabase(file: UploadedFile) -> str | None:
     try:
@@ -165,7 +160,7 @@ st.sidebar.title("Admin")
 if st.sidebar.button("Logout"):
     st.session_state.authenticated = False
     # Delete the cookie on logout
-    cookies.delete("auth_cookie", key="delete_cookie")
+    cookies.delete("auth_cookie")
     st.rerun()
 
 st.title("Cloud Kitchen Menu Manager")
