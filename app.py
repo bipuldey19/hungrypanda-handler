@@ -4,7 +4,8 @@ from supabase import create_client, Client
 import uuid  # For unique file names
 import io      # To handle file bytes
 from streamlit.runtime.uploaded_file_manager import UploadedFile # For type hints
-from streamlit_cookie_manager import CookieManager # <-- NEW: Import singular library
+# --- NEW: Import the correct cookie manager ---
+from streamlit_extras.stateful_cookies import EncryptedCookieManager
 
 # --- 1. PAGE CONFIGURATION ---
 st.set_page_config(
@@ -59,7 +60,8 @@ try:
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
     SUPABASE_BUCKET = "menu-images" 
-    APP_PASSWORD = st.secrets["app"]["password"] # Load the password
+    APP_PASSWORD = st.secrets["app"]["password"]
+    COOKIE_PASSWORD = st.secrets["app"]["cookie_password"] # <-- Get new secret
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 except KeyError as e:
@@ -68,8 +70,15 @@ except KeyError as e:
 
 # --- 4. AUTHENTICATION LOGIC WITH COOKIES ---
 
-# Initialize the cookie manager. Must be run before all st elements
-cookies = CookieManager(key="auth_cookie_key") # Add a unique key
+# Initialize the encrypted cookie manager
+# This requires the password you added to secrets.toml
+cookies = EncryptedCookieManager(
+    password=COOKIE_PASSWORD,
+    # You can add a prefix for all your cookies
+    prefix="my_app_cookie_", 
+    # Set cookie expiration (optional)
+    expires_at=None 
+)
 
 # Check for the cookie first when initializing session_state
 if "authenticated" not in st.session_state:
