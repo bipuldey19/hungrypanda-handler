@@ -482,7 +482,7 @@ def render_menu_card(item):
             with col_title:
                 st.markdown(f"### {name}")
             with col_price:
-                st.markdown(f"<h3 style='color: #667eea; text-align: right; margin: 0;'>{price}৳</h3>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color: #667eea; text-align: right; margin: 0;'>{price}৳</p>", unsafe_allow_html=True)
                 if basket_price:
                     st.markdown(f"<p style='text-align: right; color: #7f8c8d; margin: 0;'>Basket: {basket_price}৳</p>", unsafe_allow_html=True)
             
