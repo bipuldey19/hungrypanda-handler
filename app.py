@@ -4,7 +4,9 @@ import json
 from datetime import datetime
 import hashlib
 import time
+import uuid
 from supabase import create_client
+from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 # ===========================
 # PAGE CONFIGURATION
@@ -309,6 +311,31 @@ def get_supabase_client():
         st.session_state.secrets['supabase']['key']
     )
 
+def upload_file_to_supabase(file: UploadedFile, bucket_name: str = "kitchen-images") -> str | None:
+    """Uploads a Streamlit file object to Supabase Storage and returns the public URL."""
+    try:
+        supabase = get_supabase_client()
+        
+        # Get the raw bytes from the file object
+        file_bytes = file.getvalue()
+        
+        # Create a unique file path
+        file_ext = file.name.split('.')[-1]
+        file_path = f"public/{uuid.uuid4()}.{file_ext}"
+        
+        # Upload the bytes
+        supabase.storage.from_(bucket_name).upload(
+            file=file_bytes,
+            path=file_path,
+            file_options={"content-type": file.type}
+        )
+        
+        # Return the public URL
+        return supabase.storage.from_(bucket_name).get_public_url(file_path)
+    except Exception as e:
+        st.error(f"Storage Error: {str(e)}")
+        return None
+
 # ===========================
 # API FUNCTIONS
 # ===========================
@@ -560,23 +587,60 @@ def render_add_item_form():
         allergens = st.text_input("Allergens", placeholder="e.g., Dairy, Nuts")
         
         st.markdown("### 🖼️ Images")
-        main_image_url = st.text_input("Main Image URL *", placeholder="https://...")
-        other_image_urls = st.text_area(
-            "Other Image URLs (one per line)",
-            placeholder="https://image1.jpg\nhttps://image2.jpg"
+        
+        # Main image upload
+        main_image_file = st.file_uploader(
+            "Main Image *",
+            type=["jpg", "jpeg", "png", "webp"],
+            help="Upload the main display image for this item",
+            key="main_image_upload"
         )
         
-        # Preview
-        if main_image_url:
-            st.image(main_image_url, caption="Main Image Preview", width=300)
+        # Preview main image
+        if main_image_file:
+            st.image(main_image_file, caption="Main Image Preview", width=300)
+        
+        # Additional images upload
+        other_image_files = st.file_uploader(
+            "Additional Images (Optional)",
+            type=["jpg", "jpeg", "png", "webp"],
+            accept_multiple_files=True,
+            help="Upload additional images for this item",
+            key="other_images_upload"
+        )
+        
+        # Preview additional images
+        if other_image_files:
+            cols = st.columns(min(len(other_image_files), 4))
+            for idx, img_file in enumerate(other_image_files):
+                with cols[idx % 4]:
+                    st.image(img_file, caption=f"Image {idx + 1}", use_container_width=True)
         
         st.markdown("---")
         
         if st.button("➕ Add Item to Menu", type="primary", use_container_width=True):
             # Validation
-            if not name or not price or not description or not main_image_url:
+            if not name or not price or not description or not main_image_file:
                 st.error("⚠️ Please fill in all required fields (marked with *)")
                 return
+            
+            # Upload images
+            with st.spinner("Uploading images..."):
+                # Upload main image
+                main_image_url = upload_file_to_supabase(main_image_file)
+                if not main_image_url:
+                    st.error("❌ Failed to upload main image. Please try again.")
+                    return
+                
+                # Upload additional images
+                other_image_urls = []
+                if other_image_files:
+                    for img_file in other_image_files:
+                        url = upload_file_to_supabase(img_file)
+                        if url:
+                            other_image_urls.append(url)
+                        else:
+                            st.warning(f"⚠️ Failed to upload {img_file.name}")
             
             # Prepare data
             item_data = {
@@ -589,7 +653,7 @@ def render_add_item_form():
                 "spice_level": spice_level if spice_level != "None" else None,
                 "allergens": allergens if allergens else None,
                 "main_image_url": main_image_url,
-                "other_image_urls": [url.strip() for url in other_image_urls.split('\n') if url.strip()],
+                "other_image_urls": other_image_urls,
                 "portion_size": portion_size if portion_size else None,
                 "preparation_time": preparation_time if preparation_time else None,
                 "popular": popular,
@@ -597,7 +661,7 @@ def render_add_item_form():
             }
             
             # Send to webhook
-            with st.spinner("Adding item..."):
+            with st.spinner("Adding item to menu..."):
                 success, message = add_menu_item(item_data)
                 if success:
                     st.success(message)
